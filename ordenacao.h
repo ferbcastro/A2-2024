@@ -5,7 +5,6 @@
 #include <stdio.h>
 #include <string.h>
 
-void mergeSortN (double *vetor, long tam);
-void mergeSortStr (char **vetor, long tam);
+void mergeSort (char **vetor, long tam);
 
 #endif

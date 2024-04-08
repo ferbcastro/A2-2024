@@ -24,9 +24,11 @@ typedef struct csvFile
     char *selecionaCols;
     short int *vetF;
     short int maxTamNro;
+    int cols;
+    int tamSelecionaCols;
+    long *ordemLinhas;
     long linsF[LINS_FIX];
     long lins;
-    int cols;
 } csvFile;
 
 char *formataL (csvFile *arqCSV, char *str, char *linha, long lin);

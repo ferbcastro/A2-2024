@@ -2,45 +2,7 @@
 #include "linkedList.h"
 #include "ordenacao.h"
 
-/* INICIO FUNCOES AUXILIARES LOCAIS */
-
-void obtemLinhaUser (char *buffer)
-{
-    scanf ("%1024[^\n]", buffer);
-    getchar ();    
-}
-
-char obtemLinha (FILE *arquivo, char *buffer)
-{
-    int ret;
-    if (!arquivo || !buffer) return 0;
-
-    ret = fscanf (arquivo, "%1024[^\n]", buffer);
-    if (ret == EOF) return 0;
-    fseek (arquivo, 1, SEEK_CUR);
-
-    return 1;
-}
-
-char *coluna (csvFile* arqCSV, char *buffer, int col)
-{
-    int i = 0;
-    long tam, len;
-    char *ptr, sep = ',';
-
-    if (!arqCSV || col > arqCSV->cols) return NULL;
-
-    tam = strlen (buffer);
-    ptr = separaStr (buffer, sep, tam);
-    for (i = 0; i < col; i++)
-    {
-        len = strlen (ptr);
-        tam = tam - len - 1;
-        ptr = separaStr (ptr + len + 1, sep, tam);
-    }
-
-    return ptr;
-}
+// inicio funcoes auxiliares globais
 
 short int tamanhoNro (long numero)
 {
@@ -55,6 +17,24 @@ char detectaTipo (char *str)
     if (*str == '\0' || *str == '0' || atoi (str)) return 'N';
 
     return 'S';
+}
+
+void obtemLinhaUser (char *buffer)
+{
+    scanf ("%1024[^\n]", buffer);
+    getchar ();    
+}
+
+char obtemLinhaArq (FILE *arquivo, char *buffer)
+{
+    int ret;
+    if (!arquivo || !buffer) return 0;
+
+    ret = fscanf (arquivo, "%1024[^\n]", buffer);
+    if (ret == EOF) return 0;
+    fseek (arquivo, 1, SEEK_CUR);
+
+    return 1;
 }
 
 char* iniciaSeparadorStr (char *ptr, int sep, long tamStr)
@@ -82,6 +62,189 @@ char *separaStr (char *ptr, int sep, long *tam)
 
     return iniciaSeparadorStr (ptr, sep, *tam);
 }
+
+int indiceColuna (csvFile *arqCSV, char *campo)
+{
+    char buffer[TAM_MAX + 1];
+    char *ptr, sep = ',', achou = 0; 
+    long tam;
+    int col = 0;
+
+    if (!arqCSV) return -1;
+
+    strcpy (buffer, arqCSV->vetLinhas[0].str);
+    tam = strlen (buffer);
+    ptr = iniciaSeparadorStr (buffer, sep, tam);
+    while (ptr && !achou)
+    {
+        if (!strcmp (campo, ptr)) achou = 1;
+        ptr = separaStr (ptr, sep, &tam);
+        col++;
+    }
+    if (!achou) return -1;
+
+    return --col;
+}
+
+char *obtemColuna (csvFile* arqCSV, char *buffer, int col)
+{
+    int i = 0;
+    long tam, len;
+    char *ptr, sep = ',';
+
+    if (!arqCSV || col < 0 || col > arqCSV->cols) 
+        return NULL;
+
+    tam = strlen (buffer);
+    ptr = separaStr (buffer, sep, tam);
+    for (i = 0; i < col; i++)
+    {
+        len = strlen (ptr);
+        tam = tam - len - 1;
+        ptr = separaStr (ptr + len + 1, sep, tam);
+    }
+
+    return ptr;
+}
+
+// fim funcoes auxiliares globais
+
+// inicio funcoes de abertura e 
+// fechamento/auxiliares de csvFile
+
+char verificaCabecalho (csvFile* arqCSV, char* buffer)
+{
+    char erro = 0;
+    long tam, len;
+    char *ptr;
+    char sep = ',';
+
+    tam = strlen (buffer);
+    ptr = iniciaSeparadorStr (buffer, sep, tam);
+    while (ptr && !erro) 
+    {
+        ++arqCSV->cols;
+        if (!(len = strlen (ptr))) erro = 1;
+        ptr = separaStr (ptr, sep, &tam);
+    }
+
+    return !erro;
+}
+
+csvFile* alocaCSV ()
+{
+    csvFile *arqCSV;
+    arqCSV = (csvFile*)malloc (sizeof (csvFile));
+    if (!arqCSV)
+    {
+        printf ("Erro de alocacao\n");
+        exit (1);
+    }
+
+    arqCSV->vetLinhas = NULL;
+    arqCSV->selecionaCols = NULL;
+    arqCSV->tipos = NULL;
+    arqCSV->vetF = NULL;
+    arqCSV->ordemLinhas = NULL;
+    arqCSV->lins = 0;
+    arqCSV->cols = 0;
+
+    return arqCSV;
+}
+
+csvFile *abreCSV (char *pathArquivoCSV)
+{
+    csvFile *arqCSV;
+    struct listaLigada *lTemp;
+    struct nodo *nodoStr;
+    char buffer[TAM_MAX + 1], *ptr;
+    char s, erro, sep = ',';
+    int tam, i, j;
+    size_t len;
+    
+    arqCSV = alocaCSV ();
+    arqCSV->arq = fopen (pathArquivoCSV, "r");
+    lTemp = criaLista ();
+    if (!arqCSV->arq || !lTemp) 
+        return fechaCSV (arqCSV);
+
+    if (!obtemLinhaArq (arqCSV->arq, buffer)) 
+        return fechaCSV (arqCSV);
+    if (!verificaCabecalho (arqCSV, buffer)) 
+        return fechaCSV (arqCSV);
+    insereLista (criaNodoStr (buffer, 1), lTemp);
+    ++arqCSV->lins;
+
+    arqCSV->tipos = (char*)malloc (arqCSV->cols * sizeof (char));   
+    arqCSV->vetF = (short int*)malloc (arqCSV->cols * sizeof (short int));
+    arqCSV->selecionaCols = (char*)malloc (arqCSV->cols);
+    if (!arqCSV->tipos || !arqCSV->vetF || !arqCSV->selecionaCols) 
+        return fechaCSV (arqCSV);
+
+    for (j = 0; j < arqCSV->cols; j++) 
+        arqCSV->tipos[j] = 'N';
+
+    erro = 0;
+    while (obtemLinha (arqCSV->arq, buffer) && !erro)
+    {
+        ++arqCSV->lins;
+        j = 0;
+
+        nodoStr = criaNodoStr (buffer, 1);
+        if (!insereLista (nodoStr, lTemp)) erro = 1;
+
+        tam = strlen (buffer);
+        ptr = iniciaSeparadorStr (buffer, sep, tam);
+        while (ptr && j < arqCSV->cols)
+        {
+            if (detectaTipo (ptr) == 'S') arqCSV->tipos[j] = 'S';
+            if (!(len = strlen (ptr))) modificaNodoStr (nodoStr, 0);
+            ptr = separaStr (ptr, sep, &tam);
+            j++;
+        }
+
+        if (ptr || j != arqCSV->cols) erro = 1;
+    }
+    if (erro || arqCSV->lins == 1) 
+        return fechaCSV (arqCSV);
+
+    arqCSV->vetLinhas = (linha*)malloc (arqCSV->lins * sizeof (linha));
+    arqCSV->ordemLinhas = (long*)malloc ((arqCSV->lins - 1) * sizeof (long));
+    if (!arqCSV->vetLinhas || !arqCSV->ordemLinhas) 
+        return fechaCSV (arqCSV);
+
+    for (j = 0; j < arqCSV->lins; j++) 
+        arqCSV->ordemLinhas[j] = j;
+    copiaListaLemVet (lTemp, arqCSV->vetLinhas);
+
+    free (lTemp);
+    return arqCSV;
+}
+
+void *fechaCSV (csvFile *arqCSV)
+{
+    if (!arqCSV) return NULL;
+    if (arqCSV->arq) fclose (arqCSV->arq);
+    if (arqCSV->vetF) free (arqCSV->vetF);
+    if (arqCSV->tipos) free (arqCSV->tipos);
+    if (arqCSV->selecionaCols) free (arqCSV->selecionaCols);
+    if (arqCSV->ordemLinhas) free (arqCSV->ordemLinhas);
+    if (arqCSV->vetLinhas)
+    {
+        for (int i = 0; i < arqCSV->lins; i++) 
+            free (arqCSV->vetLinhas[i].str);
+
+        free (arqCSV->vetLinhas);
+    } 
+
+    free (arqCSV);
+    return NULL;
+}
+
+// fim funcoes de abertura e 
+// fechamento/auxiliares de csvFile
+
+// inicio funcoes de impressao/auxiliares
 
 void tamMaxStrCols (csvFile *arqCSV)
 {
@@ -120,136 +283,6 @@ void tamMaxStrCols (csvFile *arqCSV)
         ptr = separaStr (ptr, sep, &tam);
         j++;
     }
-}
-
-csvFile* alocaCSV ()
-{
-    csvFile *arqCSV;
-    arqCSV = (csvFile*)malloc (sizeof (csvFile));
-    if (!arqCSV) return NULL;
-
-    arqCSV->vetLinhas = NULL;
-    arqCSV->selecionaCols = NULL;
-    arqCSV->tipos = NULL;
-    arqCSV->vetF = NULL;
-    arqCSV->lins = 0;
-    arqCSV->cols = 0;
-
-    return arqCSV;
-}
-
-char verificaCabecelho (csvFile* arqCSV, char* buffer)
-{
-    char erro = 0;
-    long tam, len;
-    char *ptr;
-    char sep = ',';
-
-    tam = strlen (buffer);
-    ptr = iniciaSeparadorStr (buffer, sep, tam);
-    while (ptr && !erro) 
-    {
-        ++arqCSV->cols;
-        if (!(len = strlen (ptr))) erro = 1;
-        ptr = separaStr (ptr, sep, &tam);
-    }
-
-    return !erro;
-}
-
-void copiaListaLemVet (struct listaLigada *l, linha *vet)
-{
-    void *ptr;
-    char s;
-    long i = 0;
-
-    while (removeListaL (l, &ptr, &s))
-    {
-        vet[i].str = (char*)ptr;
-        vet[i].completa = s;
-        i++;
-    }     
-}
-/* FIM FUNCOES AUXILIARES LOCAIS */
-
-csvFile *abreCSV (char *pathArquivoCSV)
-{
-    csvFile *arqCSV;
-    struct listaLigada *lTemp;
-    struct nodo *nodoStr;
-    char buffer[TAM_MAX + 1], *ptr;
-    char s, erro, sep = ',';
-    int tam, i, j;
-    size_t len;
-    
-    arqCSV = alocaCSV ();
-    if (!arqCSV) return NULL;
-    arqCSV->arq = fopen (pathArquivoCSV, "r");
-    lTemp = criaLista ();
-    if (!arqCSV->arq || !lTemp) return fechaCSV (arqCSV);
-
-    if (!obtemLinha (arqCSV->arq, buffer)) return fechaCSV (arqCSV);
-    insereLista (criaNodoStr (buffer, 1), lTemp);
-    ++arqCSV->lins;
-
-    if (!verificaCabecelho (arqCSV, buffer)) return fechaCSV (arqCSV);
-    
-    arqCSV->tipos = (char*)malloc (arqCSV->cols * sizeof (char));   
-    arqCSV->vetF = (short int*)malloc (arqCSV->cols * sizeof (short int));
-    arqCSV->selecionaCols = (char*)malloc (arqCSV->cols);
-    if (!arqCSV->tipos || !arqCSV->vetF || !arqCSV->selecionaCols) 
-        return fechaCSV (arqCSV);
-
-    for (j = 0; j < arqCSV->cols; j++) arqCSV->tipos[j] = 'N';
-
-    erro = 0;
-    while (obtemLinha (arqCSV->arq, buffer) && !erro)
-    {
-        ++arqCSV->lins;
-        j = 0;
-
-        nodoStr = criaNodoStr (buffer, 1);
-        if (!insereLista (nodoStr, lTemp)) erro = 1;
-
-        tam = strlen (buffer);
-        ptr = iniciaSeparadorStr (buffer, sep, tam);
-        while (ptr && j < arqCSV->cols)
-        {
-            if (detectaTipo (ptr) == 'S') arqCSV->tipos[j] = 'S';
-            if (!(len = strlen (ptr))) modificaNodoStr (nodoStr, 0);
-            ptr = separaStr (ptr, sep, &tam);
-            j++;
-        }
-
-        if (ptr || j != arqCSV->cols) erro = 1;
-    }
-
-    if (erro || arqCSV->lins == 1) return fechaCSV (arqCSV);
-    arqCSV->vetLinhas = (linha*)malloc (arqCSV->lins * sizeof (linha));
-    if (!arqCSV->vetLinhas) return fechaCSV (arqCSV);
-    copiaListaLemVet (lTemp, arqCSV->vetLinhas);
-
-    free (lTemp);
-    return arqCSV;
-}
-
-void *fechaCSV (csvFile *arqCSV)
-{
-    if (!arqCSV) return NULL;
-    if (arqCSV->arq) fclose (arqCSV->arq);
-    if (arqCSV->vetF) free (arqCSV->vetF);
-    if (arqCSV->tipos) free (arqCSV->tipos);
-    if (arqCSV->selecionaCols) free (arqCSV->selecionaCols);
-    if (arqCSV->vetLinhas)
-    {
-        for (int i = 0; i < arqCSV->lins; i++) 
-            free (arqCSV->vetLinhas[i].str);
-
-        free (arqCSV->vetLinhas);
-    } 
-
-    free (arqCSV);
-    return NULL;
 }
 
 char *formataL (csvFile *arqCSV, char *str, char *linha, long lin)
@@ -294,39 +327,6 @@ char *formataL (csvFile *arqCSV, char *str, char *linha, long lin)
     return linha;
 }
 
-void imprimeHeader (csvFile *arqCSV, int tamMaxNro)
-{
-    char *ptr, sep = ',';
-    char buffer[TAM_MAX + 1], linha[TAM_MAX + 1];
-    short int tam, len, pos = 0;
-    long i, j, tamNro;
-
-    strcpy (buffer, arqCSV->vetLinhas[0].str);
-    tam = strlen(buffer);
-    ptr = iniciaSeparadorStr (buffer, sep, tam);
-
-    for (i = 0; i <= tamMaxNro; i++, pos++) linha[pos] = ' '; 
-    for (i = 0; i < arqCSV->cols; i++)
-    {
-        if (arqCSV->selecionaCols[i])
-        {
-            len = strlen(ptr);
-
-            for (j = 0; j < arqCSV->vetF[i] - len; j++, pos++) linha[pos] = ' ';
-            strcpy (linha + pos, ptr);
-            pos = pos + len;
-
-            linha[pos] = ' ';
-            pos++;
-        }
-
-        ptr = separaStr (ptr, sep, &tam);
-    }
-    linha[pos - 1] = '\0';
-
-    printf ("%s\n", linha);
-}
-
 void previaCSV (csvFile *arqCSV)
 {
     char *ptr, *linha, buffer[TAM_MAX + 1], bufferAux[TAM_MAX + 1];
@@ -338,7 +338,7 @@ void previaCSV (csvFile *arqCSV)
     if (arqCSV->lins <= LINS_FIX)
     {
         arqCSV->maxTamNro = tamanhoNro (LINS_FIX - 1);
-        imprimeHeader (arqCSV, arqCSV->maxTamNro);
+        formataL (arqCSV, buffer, bufferAux, -1);
         for (i = 0; i < arqCSV->lins; i++)
         {
             strcpy (buffer, arqCSV->vetLinhas[arqCSV->linsF[i]].str);
@@ -350,7 +350,7 @@ void previaCSV (csvFile *arqCSV)
     {
         arqCSV->maxTamNro = tamanhoNro (arqCSV->lins);
         if (arqCSV->maxTamNro < TAM_PONTOS) arqCSV->maxTamNro = TAM_PONTOS;
-        imprimeHeader (arqCSV, arqCSV->maxTamNro);
+        formataL (arqCSV, buffer, bufferAux, -1);
         for (i = 0; i < LINS_FIX - 5; i++)
         {
             strcpy (buffer, arqCSV->vetLinhas[arqCSV->linsF[i]].str);
@@ -402,27 +402,20 @@ void sumarioCSV (csvFile *arqCSV)
     printf ("\n%d variaveis encontradas\n", arqCSV->cols);
 }
 
-long vetColunaN (csvFile *arqCSV, double **vet, int col)
+// fim funcoes de impressao/auxiliares
+
+void copiaListaLemVet (struct listaLigada *l, linha *vet)
 {
-    char buffer[TAM_MAX + 1];
-    char *ptr;
-    long i, j;
+    void *ptr;
+    char s;
+    long i = 0;
 
-    *vet = (double*)malloc (arqCSV->lins * sizeof(double));
-    if (!(*vet)) return 0;
-
-    for (i = 1, j = 0; i < arqCSV->lins; i++)
+    while (removeListaL (l, &ptr, &s))
     {
-        strcpy (buffer, arqCSV->vetLinhas[i].str);
-        ptr = coluna (arqCSV, buffer, col);
-        if (*ptr != '\0')
-        {
-            (*vet)[j] = atof (ptr);
-            j++;
-        }
-    }
-
-    return j;
+        vet[i].str = (char*)ptr;
+        vet[i].completa = s;
+        i++;
+    }     
 }
 
 long vetColunaS (csvFile *arqCSV, char ***vetS, int col)
@@ -448,72 +441,6 @@ long vetColunaS (csvFile *arqCSV, char ***vetS, int col)
     *vetS = vet;
 
     return j;
-}
-
-int achaColuna (csvFile *arqCSV, char *campo)
-{
-    char buffer[TAM_MAX + 1];
-    char *ptr, sep = ',', achou = 0; 
-    long tam;
-    int col = 0;
-
-    if (!arqCSV) return -1;
-
-    strcpy (buffer, arqCSV->vetLinhas[0].str);
-    tam = strlen (buffer);
-    ptr = iniciaSeparadorStr (buffer, sep, tam);
-    while (ptr && !achou)
-    {
-        if (!strcmp (campo, ptr)) achou = 1;
-        ptr = separaStr (ptr, sep, &tam);
-        col++;
-    }
-    if (!achou) return -1;
-
-    return --col;
-}
-
-void imprimeValoresUnicosN (double *unicos, long tam)
-{
-    long j, i = 0;
-
-    if (!unicos) return;
-
-    printf ("Valores unicos: [");
-
-    while (i < (tam - 1) && i < 9) 
-    {
-        printf ("%.1f, ", unicos[i]);
-        i++;
-    }
-    if (i < tam) 
-    { 
-        printf ("%.1f", unicos[i]);
-        i++;
-    }
-    if (tam > 10)
-    {
-        printf ("\n    ");
-        while (tam - i > 12)
-        {
-            j = 0;
-            while (j < 12)
-            {
-                printf ("%.1f, ", unicos[i]);
-                j++;
-                i++;
-            }
-            printf ("\n    ");
-        }
-        while (i < tam - 1)
-        {
-            printf ("%.1f, ", unicos[i]);
-            i++;
-        }
-        printf ("%.1f", unicos[i]);
-    }
-    
-    printf ("]\n");
 }
 
 void descricaoNumeric (csvFile *arqCSV, int col)
@@ -636,7 +563,9 @@ void descricaoString (csvFile *arqCSV, int col)
     printf ("Contador: %ld\n", tam);
     printf ("Moda: %s ", moda);
     printf ("%ld vez(es)\n", qtdModa);
-    // imprimeValoresUnicosS (unicosS, j);
+    printf ("[");
+    for (i = 0; i < j - 1; i++) printf ("'%s',", unicosS[i]);
+    printf ("%s]", unicosS[i]);
 
     for (i = 0; i < tam; i++) free (vetS[i]);
     free (unicosS);
