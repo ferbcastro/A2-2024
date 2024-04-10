@@ -1,65 +1,74 @@
 #include "ordenacao.h"
 
-#define GE(str1, str2) (strcmp (str1, str2) >= 0)
-#define L(str1, str2) (strcmp (str1, str2) < 0)
-
 char maiorIgual (char *str1, char *str2)
-{
+{   
+    double res;
 
+    if (!atoi (str1) || !atoi (str2))
+        res = (double)strcmp (str1, str2);
+    else 
+        res = atof (str1) - atof (str2);
+
+    return (res >= 0);
 }
 
-void mergeStr (char **vetor, long meio, long tam)
+void mergeStr (char **vet, int ini, int fim, long *pos)
 {
-    char **vetTemp;
-    int a, b, i;
+    long *posTemp;
+    int i, meio, tam, a, b;
+    
+    tam = fim - ini + 1;
 
-    vetTemp = (char**)malloc (tam * sizeof(char*));
-    if (!vetTemp)
+    posTemp = (long*)malloc (tam * sizeof(long));
+    if (!posTemp)
     {
         printf ("Erro de alocacao\n");
         return;
     }
     
-    /* interpola os subvetores ordenados em vetTemp */
-    a = i = 0;
-    b = meio;
-    while (a < meio && b < tam)
+    // interpola os subvetores ordenados 
+    i = 0;
+    a = ini;
+    meio = (ini + fim) / 2;
+    b = meio + 1;
+    while (a <= meio && b <= fim)
     {
-        if (GE(vetor[b], vetor[a]))
+        if (maiorIgual (vet[pos[b]], vet[pos[a]]))
         {
-            vetTemp[i] = vetor[a];
+            posTemp[i] = pos[a];
             a++;
         }
         else
         {
-            vetTemp[i] = vetor[b];
+            posTemp[i] = pos[b];
             b++;
         }
         i++;
     }
 
-    /* copia o resto dos elementos do subvetor 
-     * que nao foi todo percorrido */
-    if (a >= meio)
-        for (; b < tam; b++, i++) vetTemp[i] = vetor[b];
+    // copia o resto dos elementos do subvetor 
+    // que nao foi todo percorrido 
+    if (a > meio)
+        for (; b <= fim; b++, i++) posTemp[i] = pos[b];
     else
-        for (; a < meio; a++, i++) vetTemp[i] = vetor[a];
-    /* transfere os elementos ordenados de 
-     * vetTemp para vetor */
-    for (i = 0; i < tam; i++) vetor[i] = vetTemp[i];
+        for (; a <= meio; a++, i++) posTemp[i] = pos[a];
+    
+    // transfere os elementos ordenados de 
+    // vetTemp para vetor 
+    for (i = 0; i < tam; i++, ini++) pos[ini] = posTemp[i];
 
-    free (vetTemp);
+    free (posTemp);
 }
 
-void mergeSort (char **vetor, long tam)
+void mergeSort (char **vetor, int ini, int fim, long *pos)
 {
-    int meio = tam / 2;
+    int meio = (ini + fim) / 2;
 
-    if (tam > 1)
+    if (ini < fim)
     {
-        mergeSortStr (vetor, meio);
-        mergeSortStr (vetor + meio, tam - meio);
-        mergeStr (vetor, meio, tam);
+        mergeSort (vetor, ini, meio, pos);
+        mergeSort (vetor, meio + 1, fim, pos);
+        mergeStr (vetor, ini, fim, pos);
     }
 
     return;

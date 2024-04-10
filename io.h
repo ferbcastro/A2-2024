@@ -9,6 +9,9 @@
 #define LINS_FIX 10
 #define TAM_MAX 1024
 #define TAM_PONTOS 3
+#define TAM_LINS_FIX 1
+
+typedef char (*operacao)(char *, char *);
 
 typedef struct linha
 {
@@ -16,15 +19,31 @@ typedef struct linha
     char completa;
 } linha;
 
+typedef struct descricao
+{
+    char *moda;
+    char **col;
+    long modaQtd;
+    long cont;
+    long *unicos;
+    long qtdUnicos;
+    double media;
+    double mediana;
+    double desvioP;
+    double min;
+    double max;
+} descricao;
+
 typedef struct csvFile
 {
     FILE *arq;
     linha *vetLinhas;
+
     char *tipos;
-    char *selecionaCols;
-    short int *vetF;
     short int maxTamNro;
     int cols;
+    int *vetF;
+    int *selecionaCols;
     int tamSelecionaCols;
     long *ordemLinhas;
     long linsF[LINS_FIX];

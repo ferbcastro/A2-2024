@@ -4,9 +4,15 @@
 
 // inicio funcoes auxiliares globais
 
+void msgFalhaAlocacao ()
+{
+    printf ("Erro na alocacao de memoria\n");
+}
+
 short int tamanhoNro (long numero)
 {
     int i = 1;
+
     while (numero /= 10) i++;
 
     return i;
@@ -89,22 +95,83 @@ int indiceColuna (csvFile *arqCSV, char *campo)
 char *obtemColuna (csvFile* arqCSV, char *buffer, int col)
 {
     int i = 0;
-    long tam, len;
+    long tam;
     char *ptr, sep = ',';
 
     if (!arqCSV || col < 0 || col > arqCSV->cols) 
         return NULL;
 
     tam = strlen (buffer);
-    ptr = separaStr (buffer, sep, tam);
+    ptr = iniciaSeparadorStr (buffer, sep, tam);
     for (i = 0; i < col; i++)
-    {
-        len = strlen (ptr);
-        tam = tam - len - 1;
-        ptr = separaStr (ptr + len + 1, sep, tam);
-    }
+        ptr = separaStr (ptr, sep, &tam);
 
     return ptr;
+}
+
+void salvaEmArquivo (csvFile *arqCSV)
+{
+    FILE *arq;
+    char buffer[TAM_MAX + 1];
+    char sep = ',', *ptr, **cols;
+    long i, k, tam, j = 0;
+
+    printf ("Deseja gravar um arquivo com ");
+    printf ("as variáveis selecionadas? [S|N] ");
+    obtemLinhaUser (buffer);
+
+    cols = (char**)malloc (arqCSV->cols * sizeof (char*));
+    if (!cols) return;
+
+    if (strlen(buffer) == 1 && buffer[0] == 'S')
+    {
+        printf ("Entre com o nome do arquivo: ");
+        obtemLinhaUser (buffer);
+
+        arq = fopen (buffer, "w");
+        if (!arq) return;
+
+        for (i = 0; i < (arqCSV->lins - 1); i++)
+        {
+            strcpy (buffer, arqCSV->vetLinhas[arqCSV->ordemLinhas[i]].str);
+            tam = strlen(buffer);
+            ptr = iniciaSeparadorStr (buffer, sep, tam);
+            while (ptr)
+            {
+                cols[j] = strdup(ptr);
+                ptr = separaStr (ptr, sep, &tam);
+                j++;
+            }
+
+            for (j = 0; j < (arqCSV->tamSelecionaCols - 1); j++)
+            {
+                ptr = cols[arqCSV->selecionaCols[j]];
+                fprintf (arq, "%s,", ptr);
+            }
+            ptr = cols[arqCSV->selecionaCols[j]];
+            fprintf (arq, "%s\n", ptr);
+        }
+
+        strcpy (buffer, arqCSV->vetLinhas[i].str);
+        tam = strlen(buffer);
+        ptr = iniciaSeparadorStr (buffer, sep, tam);
+        while (ptr)
+        {
+            cols[j] = strdup(ptr);
+            ptr = separaStr (ptr, sep, &tam);
+            j++;
+        }
+
+        for (j = 0; j < (arqCSV->tamSelecionaCols - 1); j++)
+        {
+            ptr = cols[arqCSV->selecionaCols[j]];
+            fprintf (arq, "%s,", ptr);
+        }
+        ptr = cols[arqCSV->selecionaCols[j]];
+        fprintf (arq, "%s", ptr);
+
+        fclose (arq);
+    }
 }
 
 // fim funcoes auxiliares globais
@@ -112,7 +179,21 @@ char *obtemColuna (csvFile* arqCSV, char *buffer, int col)
 // inicio funcoes de abertura e 
 // fechamento/auxiliares de csvFile
 
-char verificaCabecalho (csvFile* arqCSV, char* buffer)
+void copiaListaLemVet (struct listaLigada *l, linha *vet)
+{
+    void *ptr;
+    char c;
+    long i = 0;
+
+    while (removeListaL (l, &ptr, &c))
+    {
+        vet[i].str = (char*)ptr;
+        vet[i].completa = c;
+        i++;
+    }     
+}
+
+char verificaCabecalho (csvFile* arqCSV, char *buffer)
 {
     char erro = 0;
     long tam, len;
@@ -143,9 +224,9 @@ csvFile* alocaCSV ()
 
     arqCSV->vetLinhas = NULL;
     arqCSV->selecionaCols = NULL;
+    arqCSV->ordemLinhas = NULL;
     arqCSV->tipos = NULL;
     arqCSV->vetF = NULL;
-    arqCSV->ordemLinhas = NULL;
     arqCSV->lins = 0;
     arqCSV->cols = 0;
 
@@ -159,33 +240,40 @@ csvFile *abreCSV (char *pathArquivoCSV)
     struct nodo *nodoStr;
     char buffer[TAM_MAX + 1], *ptr;
     char s, erro, sep = ',';
-    int tam, i, j;
-    size_t len;
+    long tam, i, j, len;
     
     arqCSV = alocaCSV ();
     arqCSV->arq = fopen (pathArquivoCSV, "r");
     lTemp = criaLista ();
     if (!arqCSV->arq || !lTemp) 
+    {
+        msgFalhaAlocacao ();
+        free (lTemp);
         return fechaCSV (arqCSV);
+    }
 
     if (!obtemLinhaArq (arqCSV->arq, buffer)) 
         return fechaCSV (arqCSV);
+    insereLista (criaNodoStr (buffer, 1), lTemp);
     if (!verificaCabecalho (arqCSV, buffer)) 
         return fechaCSV (arqCSV);
-    insereLista (criaNodoStr (buffer, 1), lTemp);
     ++arqCSV->lins;
 
     arqCSV->tipos = (char*)malloc (arqCSV->cols * sizeof (char));   
-    arqCSV->vetF = (short int*)malloc (arqCSV->cols * sizeof (short int));
-    arqCSV->selecionaCols = (char*)malloc (arqCSV->cols);
+    arqCSV->vetF = (int*)malloc (arqCSV->cols * sizeof (int));
+    arqCSV->selecionaCols = (int*)malloc (arqCSV->cols * sizeof (int));
     if (!arqCSV->tipos || !arqCSV->vetF || !arqCSV->selecionaCols) 
+    {
+        msgFalhaAlocacao ();
+        free (lTemp);
         return fechaCSV (arqCSV);
+    }
 
     for (j = 0; j < arqCSV->cols; j++) 
         arqCSV->tipos[j] = 'N';
 
     erro = 0;
-    while (obtemLinha (arqCSV->arq, buffer) && !erro)
+    while (obtemLinhaArq (arqCSV->arq, buffer) && !erro)
     {
         ++arqCSV->lins;
         j = 0;
@@ -206,15 +294,20 @@ csvFile *abreCSV (char *pathArquivoCSV)
         if (ptr || j != arqCSV->cols) erro = 1;
     }
     if (erro || arqCSV->lins == 1) 
+    {
+        free (lTemp);  
         return fechaCSV (arqCSV);
+    }
 
     arqCSV->vetLinhas = (linha*)malloc (arqCSV->lins * sizeof (linha));
-    arqCSV->ordemLinhas = (long*)malloc ((arqCSV->lins - 1) * sizeof (long));
+    arqCSV->ordemLinhas = (long*)malloc (arqCSV->lins * sizeof (long));
     if (!arqCSV->vetLinhas || !arqCSV->ordemLinhas) 
+    {
+        msgFalhaAlocacao ();
+        free (lTemp);
         return fechaCSV (arqCSV);
-
-    for (j = 0; j < arqCSV->lins; j++) 
-        arqCSV->ordemLinhas[j] = j;
+    }
+    
     copiaListaLemVet (lTemp, arqCSV->vetLinhas);
 
     free (lTemp);
@@ -248,15 +341,15 @@ void *fechaCSV (csvFile *arqCSV)
 
 void tamMaxStrCols (csvFile *arqCSV)
 {
-    int i, tam, numLins, j = 0;
+    int i, numLins, j = 0;
     char buffer[TAM_MAX + 1], sep = ',';
     char *ptr;
-    long len;
+    long len, tam;
 
     if (!arqCSV) return;
 
     for (i = 0; i < arqCSV->cols; i++) arqCSV->vetF[i] = TAM_PONTOS;
-    numLins = arqCSV->lins > LINS_FIX ? LINS_FIX : arqCSV->lins; 
+    numLins = (arqCSV->lins - 1) > LINS_FIX ? LINS_FIX : (arqCSV->lins - 1); 
 
     for (i = 0; i < numLins; i++, j = 0)
     {
@@ -287,42 +380,59 @@ void tamMaxStrCols (csvFile *arqCSV)
 
 char *formataL (csvFile *arqCSV, char *str, char *linha, long lin)
 {
-    char *ptr, sep = ',';
-    int pos = 0;
-    long i, j, len, tam, tamNro;
+    char *ptr, sep = ',', **cols;
+    int col, pos = 0;
+    long i, len, tam, tamNro, j = 0;
+
+    cols = (char**)malloc (arqCSV->cols * sizeof (char*));
+    if (!cols) return NULL;
 
     tam = strlen(str);
     ptr = iniciaSeparadorStr (str, sep, tam);
+    while (ptr)
+    {
+        cols[j] = strdup(ptr);
+        ptr = separaStr (ptr, sep, &tam);
+        j++;
+    }
 
-    sprintf (linha + pos, "%ld", lin);
-    pos = tamanhoNro(lin);
-    for (j = 0; j <= arqCSV->maxTamNro - tamanhoNro(lin); j++, pos++) 
+    // posiciona o numero correspondente a linha na string formatada
+    // coloca apenas espacos na string ao formatar o cabecalho
+    if (lin >= 0)
+    {
+        sprintf (linha + pos, "%ld", lin);
+        tamNro = tamanhoNro(lin);
+        pos = tamanhoNro(lin);
+    }
+    else 
+        tamNro = 0;   
+    for (j = 0; j <= arqCSV->maxTamNro - tamNro; j++, pos++) 
         linha[pos] = ' ';
 
-    for (i = 0; i < arqCSV->cols; i++)
+    // formata na string as demais colunas
+    for (i = 0; i < arqCSV->tamSelecionaCols; i++)
     {
-        if (arqCSV->selecionaCols[i])
+        col = arqCSV->selecionaCols[i];
+        len = strlen(cols[col]);
+        if (!len)
         {
-            len = strlen(ptr);
-            if (!len)
-            {
-                for (j = 0; j < arqCSV->vetF[i] - 3; j++, pos++) linha[pos] = ' ';
-                strcpy (linha + pos, "Nan");
-                pos = pos + 3;
-            }
-            else 
-            {
-                for (j = 0; j < arqCSV->vetF[i] - len; j++, pos++) linha[pos] = ' ';
-                strcpy (linha + pos, ptr);
-                pos = pos + len;
-            }
-            linha[pos] = ' ';
-            pos++;
+            for (j = 0; j < arqCSV->vetF[col] - 3; j++, pos++) linha[pos] = ' ';
+            strcpy (linha + pos, "Nan");
+            pos = pos + 3;
         }
-
-        ptr = separaStr (ptr, sep, &tam);
+        else 
+        {
+            for (j = 0; j < arqCSV->vetF[col] - len; j++, pos++) linha[pos] = ' ';
+            strcpy (linha + pos, cols[col]);
+            pos = pos + len;
+        }
+        linha[pos] = ' ';
+        pos++;
     }
     linha[pos - 1] = '\0';
+
+    for (j = 0; j < arqCSV->cols; j++) free (cols[j]);
+    free (cols);
 
     return linha;
 }
@@ -337,8 +447,11 @@ void previaCSV (csvFile *arqCSV)
     tamMaxStrCols (arqCSV);
     if (arqCSV->lins <= LINS_FIX)
     {
-        arqCSV->maxTamNro = tamanhoNro (LINS_FIX - 1);
+        arqCSV->maxTamNro = TAM_LINS_FIX;
+        strcpy (buffer, arqCSV->vetLinhas[0].str);
         formataL (arqCSV, buffer, bufferAux, -1);
+        printf ("%s\n", bufferAux);
+
         for (i = 0; i < arqCSV->lins; i++)
         {
             strcpy (buffer, arqCSV->vetLinhas[arqCSV->linsF[i]].str);
@@ -348,9 +461,12 @@ void previaCSV (csvFile *arqCSV)
     }
     else 
     {
-        arqCSV->maxTamNro = tamanhoNro (arqCSV->lins);
+        arqCSV->maxTamNro = tamanhoNro (arqCSV->lins - 2);
         if (arqCSV->maxTamNro < TAM_PONTOS) arqCSV->maxTamNro = TAM_PONTOS;
+        strcpy (buffer, arqCSV->vetLinhas[0].str);
         formataL (arqCSV, buffer, bufferAux, -1);
+        printf ("%s\n", bufferAux);
+
         for (i = 0; i < LINS_FIX - 5; i++)
         {
             strcpy (buffer, arqCSV->vetLinhas[arqCSV->linsF[i]].str);
@@ -359,14 +475,11 @@ void previaCSV (csvFile *arqCSV)
         }
         printf ("...");
         for (j = 0; j <= arqCSV->maxTamNro - TAM_PONTOS; j++) printf (" ");
-        for (k = 0; k < arqCSV->cols; k++)
+        for (k = 0; k < arqCSV->tamSelecionaCols; k++)
         {
-            if (arqCSV->selecionaCols[k])
-            {
-                temp = arqCSV->vetF[k];
-                for (j = 0; j < temp - 3; j++) printf (" ");
-                printf ("... ");
-            }    
+            temp = arqCSV->vetF[arqCSV->selecionaCols[k]];
+            for (j = 0; j < temp - 3; j++) printf (" ");
+            printf ("... ");    
         }
         printf ("\n");
         for (; i < LINS_FIX; i++) 
@@ -402,35 +515,69 @@ void sumarioCSV (csvFile *arqCSV)
     printf ("\n%d variaveis encontradas\n", arqCSV->cols);
 }
 
-// fim funcoes de impressao/auxiliares
-
-void copiaListaLemVet (struct listaLigada *l, linha *vet)
+void imprimeDescricao (descricao d, char tipo)
 {
-    void *ptr;
-    char s;
-    long i = 0;
+    long i;
 
-    while (removeListaL (l, &ptr, &s))
+    if (tipo == 'N')
     {
-        vet[i].str = (char*)ptr;
-        vet[i].completa = s;
-        i++;
-    }     
+        printf ("Contador: %ld\n", d.cont);
+        printf ("Media: %.1f\n", d.mediana);
+        printf ("Desvio: %.1f\n", d.desvioP);
+        printf ("Mediana: %.1f\n", d.mediana);
+    }
+    printf ("Moda: %s ", d.moda);
+    printf ("%ld vez(es)\n", d.modaQtd);
+    if (tipo == 'N')
+    {
+        printf ("Min: %.1f\n", d.min);
+        printf ("Max: %.1f\n", d.max); 
+        printf ("Valores unicos: [");
+        for (i = 0; i < (d.qtdUnicos - 1); i++) 
+            printf ("%s,", d.col[d.unicos[i]]);
+        if (i)
+            printf ("%s", d.col[d.unicos[i]]); 
+        printf ("]\n");      
+    }
+    else 
+    {
+        printf ("Valores unicos: [");
+        for (i = 0; i < d.qtdUnicos; i++) 
+            printf ("'%s',", d.col[d.unicos[i]]);
+        if (i)
+            printf ("'%s'", d.col[d.unicos[i]]); 
+        printf ("]\n");  
+    }
 }
 
-long vetColunaS (csvFile *arqCSV, char ***vetS, int col)
+void selecionaLinsImpressao (csvFile *arqCSV)
+{
+    long i;
+
+    if ((arqCSV->lins - 1) <= LINS_FIX) 
+        for (i = 0; i < (arqCSV->lins - 1); i++) 
+            arqCSV->linsF[i] = arqCSV->ordemLinhas[i + 1];
+    else 
+    {
+        for (i = 0; i < LINS_FIX - 5; i++) 
+            arqCSV->linsF[i] = arqCSV->ordemLinhas[i + 1];
+        for (; i < LINS_FIX; i++) 
+            arqCSV->linsF[i] = arqCSV->ordemLinhas[arqCSV->lins - LINS_FIX + i];
+    }
+}
+
+// fim funcoes de impressao/auxiliares
+
+long vetColunaS (csvFile *arqCSV, char **vet, int col)
 {
     char buffer[TAM_MAX + 1];
-    char **vet, *ptr;
+    char *ptr;
     long i, j;
-
-    vet = (char**)malloc (arqCSV->lins * sizeof (char*));
-    if (!vet) return 0;
 
     for (i = 1, j = 0; i < arqCSV->lins; i++)
     {
-        strcpy (buffer, arqCSV->vetLinhas[i].str);
-        ptr = coluna (arqCSV, buffer, col);
+        strcpy (buffer, arqCSV->vetLinhas[arqCSV->ordemLinhas[i]].str);
+        ptr = obtemColuna (arqCSV, buffer, col);
         if (*ptr != '\0') 
         {
             vet[j] = strdup(ptr);
@@ -438,143 +585,81 @@ long vetColunaS (csvFile *arqCSV, char ***vetS, int col)
         }
     }
 
-    *vetS = vet;
-
     return j;
 }
 
-void descricaoNumeric (csvFile *arqCSV, int col)
+void calculoDescricao (csvFile *arqCSV, descricao *d, int col)
 {
+    char *ant, tipo = arqCSV->tipos[col];
+    double aux;
     long double quadrados = 0;
-    double *vetN, *unicosN; 
-    double mediana, moda, dp, min, max, atual, media = 0;
-    long tam, qtdAtual, qtdModa, i, j;
+    long *unicos, antQtd, i, j = 0;
 
-    tam = vetColunaN (arqCSV, &vetN, col);
-    if (!vetN) return;
-    unicosN = (double*)malloc (tam * sizeof (double));
-    if (!unicosN) return;
-    mergeSortN (vetN, tam);
+    mergeSort (d->col, 0, d->cont - 1, arqCSV->ordemLinhas);
     
-    qtdAtual = qtdModa = 0;
-    moda = atual = min = max = vetN[0];
-    for (i = 0, j = 0; i < tam; i++) 
+    // calcula media, variancia, moda e valores unicos
+    antQtd = d->modaQtd = d->media = 0;
+    d->moda = ant = d->col[0];
+    d->min = d->max = atof(d->col[0]);
+    for (i = 0; i < d->cont; i++) 
     {
-        if (vetN[i] < min) min = vetN[i];
-        else if (vetN[i] > max) max = vetN[i];
-
-        media += vetN[i];
-        quadrados += vetN[i] * vetN[i];
-
-        if (vetN[i] != atual) 
+        if (tipo == 'N')
         {
-            if (qtdAtual > qtdModa)
+            aux = atof(d->col[arqCSV->ordemLinhas[i]]);
+            if (aux < d->min) d->min = aux;
+            else if (aux > d->max) d->max = aux;
+
+            d->media += aux;
+            quadrados += aux * aux;
+        }
+
+        if (strcmp(d->col[arqCSV->ordemLinhas[i]], ant))
+        {
+            if (antQtd > d->modaQtd)
             {
-                qtdModa = qtdAtual;
-                moda = atual;
+                d->modaQtd = antQtd;
+                d->moda = ant;
             }
-            if (qtdAtual == 1)
+            if (antQtd == 1)
             {
-                unicosN[j] = atual;
+                d->unicos[j] = arqCSV->ordemLinhas[i - 1];
                 j++;
             }
 
-            atual = vetN[i];
-            qtdAtual = 1;
+            ant = d->col[arqCSV->ordemLinhas[i]];
+            antQtd = 1;
         }
-        else ++qtdAtual;
+        else ++antQtd;
     }
-    if (qtdAtual > qtdModa)
+    if (antQtd > d->modaQtd)
     {
-        qtdModa = qtdAtual;
-        moda = atual;
+        d->moda = ant;
+        d->modaQtd = antQtd;
     }
-    if (qtdAtual == 1)
+    if (antQtd == 1) 
     {
-        unicosN[j] = atual;
+        d->unicos[j] = arqCSV->ordemLinhas[i - 1];
         j++;
     }
+    d->qtdUnicos = j;
 
-    media = media / tam;
-    dp = (quadrados - media * media * tam) / tam;
-
-    if (tam % 2) mediana = vetN[tam / 2];
-    else mediana = (vetN[(tam - 1) / 2] + vetN[tam / 2]) / 2;
-
-    printf ("Contador: %ld\n", tam);
-    printf ("Media: %.1f\n", media);
-    printf ("Desvio: %.1f\n", dp);
-    printf ("Mediana: %.1f\n", mediana);
-    printf ("Moda: %.1f ", moda);
-    printf ("%ld vez(es)\n", qtdModa);
-    printf ("Min: %.1f\n", min);
-    printf ("Max: %.1f\n", max);
-    imprimeValoresUnicosN (unicosN, j);
-    
-    free (unicosN);
-    free (vetN);
-}
-
-void descricaoString (csvFile *arqCSV, int col)
-{
-    char *moda, *atual, **unicosS;
-    long tam, qtdAtual, qtdModa, i, j;
-    char *ptr, **vetS, campo[TAM_MAX + 1];
-
-    tam = vetColunaS (arqCSV, &vetS, col);
-    mergeSortStr (vetS, tam);
-    if (!vetS) return;
-    unicosS = (char**)malloc (tam * sizeof (char*));
-    if (!unicosS) return;
-
-    qtdModa = qtdAtual = 0;
-    atual = vetS[0];
-    for (i = 1, j = 0; i < tam; i++)
+    if (tipo == 'N')
     {
-        if (strcmp (vetS[i], atual))
-        {
-            if (qtdAtual > qtdModa)
-            {
-                moda = atual;
-                qtdModa = qtdAtual;
-            }
-            if (qtdAtual == 1) 
-            {
-                unicosS[j] = atual;
-                j++;
-            }
-
-            qtdAtual = 1;
-            atual = vetS[i];
-        }
-        else ++qtdAtual;
-    }
-    if (qtdAtual > qtdModa)
-    {
-        moda = atual;
-        qtdModa = qtdAtual;
-    }
-    if (qtdAtual == 1) 
-    {
-        unicosS[j] = atual;
-        j++;
+        d->media = d->media / d->cont;
+        d->desvioP = sqrt ((quadrados - d->media * d->media * d->cont) / d->cont);
+        if (d->cont % 2) 
+            d->mediana = atof(d->col[d->cont / 2]);
+        else 
+            d->mediana = (atof(d->col[(d->cont - 1) / 2]) + atof(d->col[d->cont / 2])) / 2;
     }
 
-    printf ("Contador: %ld\n", tam);
-    printf ("Moda: %s ", moda);
-    printf ("%ld vez(es)\n", qtdModa);
-    printf ("[");
-    for (i = 0; i < j - 1; i++) printf ("'%s',", unicosS[i]);
-    printf ("%s]", unicosS[i]);
-
-    for (i = 0; i < tam; i++) free (vetS[i]);
-    free (unicosS);
-    free (vetS);
+    return;
 }
 
 void descricaoCSV (csvFile *arqCSV)
 {
-    long tam, qtdAtual, qtdModa, i, j;
+    descricao d;
+    long i, j;
     char *ptr, **vetS, campo[TAM_MAX + 1];
     int col;
 
@@ -582,121 +667,207 @@ void descricaoCSV (csvFile *arqCSV)
 
     printf ("Entre com a variavel: ");
     obtemLinhaUser (campo);
-    col = achaColuna (arqCSV, campo);
+    col = indiceColuna (arqCSV, campo);
 
     if (col < 0 || col >= arqCSV->cols) return;
 
-    if (arqCSV->tipos[col] == 'N')
-        descricaoNumeric (arqCSV, col);
-    else 
-        descricaoString (arqCSV, col);
-}
-
-void salvaEmArquivo (csvFile *arqCSV)
-{
-    FILE *arq;
-    char buffer[TAM_MAX + 1];
-    char sep = ',', *ptr;
-    long i, k, j;
-
-    printf ("Deseja gravar um arquivo com ");
-    printf ("as variáveis selecionadas? [S|N] ");
-    obtemLinhaUser (buffer);
-
-    if (strlen(buffer) == 1 && buffer[0] == 'S')
+    d.col = (char**)malloc (arqCSV->lins * sizeof(char*));
+    if (!d.col)
     {
-        printf ("Entre com o nome do arquivo: ");
-        obtemLinhaUser (buffer);
-
-        arq = fopen (buffer, "w");
-        if (!arq) return;
-
-        for (i = 0; i < arqCSV->lins; i++)
-        {
-            for (j = 0; j < arqCSV->cols - 1; j++)
-            {
-                if (arqCSV->selecionaCols[j])
-                {
-                    strcpy (buffer, arqCSV->vetLinhas[i].str);
-                    ptr = coluna (arqCSV, buffer, j);
-                    fprintf (arq, "%s,", ptr);
-                }
-            }
-            if (arqCSV->selecionaCols[j])
-            {
-                strcpy (buffer, arqCSV->vetLinhas[i].str);
-                ptr = coluna (arqCSV, buffer, j);
-                fprintf (arq, "%s\n", ptr);
-            }
-        }
-
-        fclose (arq);
+        msgFalhaAlocacao ();
+        return;
     }
+
+    for (j = 0; j < arqCSV->lins; j++) 
+        arqCSV->ordemLinhas[j] = j;
+    d.cont = vetColunaS (arqCSV, d.col, col);
+    if (!d.cont) return;
+
+    d.unicos = (long*)malloc (d.cont * sizeof (long));
+    if (!d.unicos)
+    {
+        msgFalhaAlocacao ();
+        free (d.col);
+        return;
+    }
+
+    calculoDescricao (arqCSV, &d, col);
+    imprimeDescricao (d, arqCSV->tipos[col]);
+
+    for (i = 0; i < d.cont; i++) free (d.col[i]);
+    free (d.unicos);
+    free (d.col);
 }
 
 void selecionaCSV (csvFile *arqCSV)
 {
     char sep = ' ', *ptr;
-    char campo[TAM_MAX + 1], buffer[TAM_MAX + 1];
-    long len, tam;
-    int col;
+    char buffer[TAM_MAX + 1];
+    long len, tam, i;
+    int col, j = 0;
  
     printf ("Entre com a variaveis que deseja ");
     printf ("selecionar (separadas por espaço): ");
-    obtemLinhaUser (campo);
-
-    memset (arqCSV->selecionaCols, 0, arqCSV->cols);
+    obtemLinhaUser (buffer);
     
     tam = strlen (buffer);
     ptr = iniciaSeparadorStr (buffer, sep, tam);
     while (ptr)
     {
-        col = achaColuna(arqCSV, ptr);
+        col = indiceColuna(arqCSV, ptr);
         if (col >= 0 && col < arqCSV->cols)
-            arqCSV->selecionaCols[col] = 1;
+        {
+            arqCSV->selecionaCols[j] = col;
+            ++j;
+        }
 
         ptr = separaStr (ptr, sep, &tam);
     }
-
-    previaCSV (arqCSV);
-
-    salvaEmArquivo (arqCSV);
+    
+    if (j)
+    {
+        for (i = 0; i < arqCSV->lins; i++) 
+            arqCSV->ordemLinhas[i] = i;
+        arqCSV->tamSelecionaCols = j;
+        selecionaLinsImpressao (arqCSV);
+        previaCSV (arqCSV);
+        salvaEmArquivo (arqCSV);
+    }
 }
 
 void mostraCSV (csvFile *arqCSV)
 {
-    int i;
+    long i;
 
-    if (arqCSV->lins <= LINS_FIX) 
-        for (i = 0; i < arqCSV->lins; i++) 
-            arqCSV->linsF[i] = i + 1;
-    else 
-    {
-        for (i = 0; i < LINS_FIX - 5; i++) 
-            arqCSV->linsF[i] = i + 1;
-        for (i = LINS_FIX - 5; i > 0; i--) 
-            arqCSV->linsF[i] = arqCSV->lins - i;
-    }
+    for (i = 0; i < arqCSV->lins; i++) 
+        arqCSV->ordemLinhas[i] = i;
+    selecionaLinsImpressao (arqCSV);
 
-    for (i = 0; i < arqCSV->cols; i++) arqCSV->selecionaCols[i] = 1;
+    for (i = 0; i < arqCSV->cols; i++) 
+        arqCSV->selecionaCols[i] = i;
+    arqCSV->tamSelecionaCols = arqCSV->cols;
 
     previaCSV (arqCSV);
 }
 
-void filtraCSV (csvFile *arqCSV, char (*filtro)(char *, char *));
-void ordenaCSV (csvFile *arqCSV);
-void zerosCSV (csvFile *arqCSV);
+char igual (char *str1, char *str2)
+{
+
+}
+
+char diferente (char *str1, char *str2)
+{
+    
+}
+
+// char maiorIgual (char *str1, char *str2)
+// {
+    
+// }
+// estritamente maior
+char maior (char *str1, char *str2)
+{
+    
+}
+
+char menorIgual (char *str1, char *str2)
+{
+    
+}
+// estritamente menor
+char menor (char *str1, char *str2)
+{
+    
+}
+
+operacao selecionaFiltro (char *op)
+{
+    switch (op[0])
+    {
+        case '=':
+            switch (op[1])
+            {
+                case '=':
+                    return igual;
+                    break;
+                case '!': 
+                    return diferente;
+                    break;
+                default:
+                    printf ("Filtro invalido\n");
+                    break;
+            }
+            break;
+        case '>':
+            switch (op[1])
+            {
+                case '=':
+                    // return maiorIgual;   
+                    break;
+                case '\0': 
+                    return maior;
+                    break;
+                default:
+                    printf ("Filtro invalido\n");
+                    break;
+            }
+            break;
+        case '<':
+            switch (op[1])
+            {
+                case '=':
+                    return menorIgual;
+                    break;
+                case '\0': 
+                    return menor;
+                    break;
+                default:
+                    printf ("Filtro invalido\n");
+                    break;
+            }
+            break;
+        default:
+            printf ("Filtro invalido\n");
+            break;
+    }
+}
+
+void filtraCSV (csvFile *arqCSV, char (*filtro)(char *, char *))
+{
+    
+}
+
+void ordenaCSV (csvFile *arqCSV)
+{
+
+}
+
+void zerosCSV (csvFile *arqCSV)
+{
+
+}
 
 int main ()
 {
     csvFile* csv;
     char buffer[TAM_MAX + 1];
+    char str[] = ",TESTE,TESTE,,TESTE,";
+    char *ptr;
+    long tam;
 
+    // tam = strlen (str);
+    // ptr = iniciaSeparadorStr (str, ',', tam);
+    // while (ptr)
+    // {
+    //     printf ("%s\n", ptr);
+    //     ptr = separaStr (ptr, ',', &tam);
+    // }
     csv = abreCSV ("Teste2.csv");
-    for (int i = 0; i < LINS_FIX; i++) csv->linsF[i] = i;
+    // for (int i = 0; i < LINS_FIX; i++) csv->linsF[i] = i;
     
-    mostraCSV (csv);
+    descricaoCSV (csv);
+    // printf ("%s\n", csv->vetLinhas[1].str);
     fechaCSV (csv);
 }
 
-// TRATAR CASO NAO HAJA NENHUM VALOR VALIDO NA COLUNA (DESCRICAOCSV)
+// FAZER DESTROI LISTA PARA ADICIONA EM ABRE
