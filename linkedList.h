@@ -24,4 +24,5 @@ struct nodo* criaNodoStr (char *str, char status);
 struct nodo* criaNodoInt (int num);
 void modificaNodoStr (struct nodo *n, char status);
 char removeListaL (struct listaLigada* l, void **ptr, char *status);
+void destroiListaL (struct listaLigada* l);
 #endif

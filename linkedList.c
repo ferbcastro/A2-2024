@@ -8,6 +8,7 @@ struct listaLigada* criaLista ()
     if (!lista) return NULL;
 
     lista->tam = 0;
+    lista->ini = lista->fim = NULL;
     return lista;
 }
 
@@ -88,4 +89,19 @@ char removeListaL (struct listaLigada* l, void **ptr, char *status)
     *status = nodoAux->status;
     free (nodoAux);
     --l->tam;
+}
+
+void destroiListaL (struct listaLigada* l)
+{
+    struct nodo *aux;
+
+    while (l->ini)
+    {
+        aux = l->ini;
+        l->ini = l->ini->prox;
+        free (aux->ptr);
+        free (aux);
+    }
+
+    free (l);
 }

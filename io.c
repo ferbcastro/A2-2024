@@ -265,7 +265,7 @@ csvFile *abreCSV (char *pathArquivoCSV)
     if (!arqCSV->tipos || !arqCSV->vetF || !arqCSV->selecionaCols) 
     {
         msgFalhaAlocacao ();
-        free (lTemp);
+        destroiListaL (lTemp);
         return fechaCSV (arqCSV);
     }
 
@@ -295,7 +295,7 @@ csvFile *abreCSV (char *pathArquivoCSV)
     }
     if (erro || arqCSV->lins == 1) 
     {
-        free (lTemp);  
+        destroiListaL (lTemp);
         return fechaCSV (arqCSV);
     }
 
@@ -304,7 +304,7 @@ csvFile *abreCSV (char *pathArquivoCSV)
     if (!arqCSV->vetLinhas || !arqCSV->ordemLinhas) 
     {
         msgFalhaAlocacao ();
-        free (lTemp);
+        destroiListaL (lTemp);
         return fechaCSV (arqCSV);
     }
     
@@ -752,22 +752,22 @@ void mostraCSV (csvFile *arqCSV)
 
 char igual (char *str1, char *str2)
 {
-
+    return (!strcmp (str1, str2));
 }
 
 char diferente (char *str1, char *str2)
 {
-    
+    return (!igual (str1, str2));
 }
 
-// char maiorIgual (char *str1, char *str2)
-// {
-    
-// }
-// estritamente maior
 char maior (char *str1, char *str2)
 {
-    
+    return (strcmp (str1, str2) > 0); 
+}
+// estritamente maior
+char maiorIgual (char *str1, char *str2)
+{
+    return ()    
 }
 
 char menorIgual (char *str1, char *str2)
@@ -784,13 +784,13 @@ operacao selecionaFiltro (char *op)
 {
     switch (op[0])
     {
-        case '=':
+        case '!':
             switch (op[1])
             {
                 case '=':
                     return igual;
                     break;
-                case '!': 
+                case '': 
                     return diferente;
                     break;
                 default:
@@ -801,8 +801,8 @@ operacao selecionaFiltro (char *op)
         case '>':
             switch (op[1])
             {
-                case '=':
-                    // return maiorIgual;   
+                case '=':           
+                    return maiorIgual;   
                     break;
                 case '\0': 
                     return maior;
@@ -826,6 +826,7 @@ operacao selecionaFiltro (char *op)
                     break;
             }
             break;
+        case 
         default:
             printf ("Filtro invalido\n");
             break;
